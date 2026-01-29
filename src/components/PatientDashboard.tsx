@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Appointment, AppointmentStatus, User } from '../types';
+import { Appointment, User } from '../types';
 
 interface PatientDashboardProps {
   appointments: Appointment[];
@@ -29,7 +29,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
       (a) => a.doctorId === selectedDoctor.id && 
              a.date === formData.date && 
              a.time === slot.toString() &&
-             a.status !== 'REJECTED'
+             (a.status || '').toLowerCase() !== 'rejected'
     );
   };
 
@@ -73,9 +73,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
             ) : (
               <div className="divide-y divide-slate-100">
                 {appointments.map(appt => {
-                  // تحويل القادم من القاعدة لأحرف كبيرة للتأكد
-                  const currentStatus = (appt.status || '').toUpperCase();
-                  const isAccepted = currentStatus === 'ACCEPTED' || currentStatus === 'CONFIRMED';
+                  // --- التعديل السحري هنا ---
+                  // نقرأ الحالة ونحولها لحروف صغيرة ونتأكد من جميع الاحتمالات
+                  const rawStatus = (appt.status || 'pending').toLowerCase(); 
+                  const isAccepted = rawStatus === 'accepted' || rawStatus === 'confirmed';
+                  // ---------------------------
 
                   return (
                     <div key={appt.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
@@ -175,4 +177,3 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
 };
 
 export default PatientDashboard;
-                                                                             

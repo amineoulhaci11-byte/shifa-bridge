@@ -47,15 +47,12 @@ const App: React.FC = () => {
       query = user.role === 'PATIENT' ? query.eq('patient_id', user.id) : query.eq('doctor_id', user.id);
       const { data: apptsData } = await query.order('appointment_date', { ascending: true });
       if (!apptsData || apptsData.length === 0) { setAppointments([]); return; }
-      
       const patientIds = Array.from(new Set(apptsData.map((a: any) => a.patient_id)));
       const doctorIds = Array.from(new Set(apptsData.map((a: any) => a.doctor_id)));
-      
       const [patientsRes, doctorsRes] = await Promise.all([
         patientIds.length ? supabase.from('patients').select('id, full_name').in('id', patientIds) : { data: [] },
         doctorIds.length ? supabase.from('doctors').select('id, full_name, clinic_location').in('id', doctorIds) : { data: [] }
       ]);
-
       const patientsMap: Record<string, string> = {};
       patientsRes.data?.forEach((p: any) => { patientsMap[p.id] = p.full_name; });
       const doctorsMap: Record<string, string> = {};
@@ -64,19 +61,11 @@ const App: React.FC = () => {
         doctorsMap[d.id] = d.full_name;
         if (d.clinic_location) doctorsLocationMap[d.id] = d.clinic_location;
       });
-
       setAppointments(apptsData.map((a: any) => ({
-        id: a.id.toString(), 
-        patientId: a.patient_id.toString(), 
-        doctorId: a.doctor_id.toString(),
-        patientName: patientsMap[a.patient_id] || 'مريض', 
-        doctorName: doctorsMap[a.doctor_id] || 'طبيب',
-        doctorLocation: doctorsLocationMap[a.doctor_id], 
-        date: a.appointment_date, 
-        time: a.appointment_time,
-        // تحويل الحالة دائماً لأحرف كبيرة لضمان مطابقتها في الواجهة
-        status: (a.status ? a.status.toUpperCase() : 'PENDING') as AppointmentStatus, 
-        notes: a.notes || '' 
+        id: a.id.toString(), patientId: a.patient_id.toString(), doctorId: a.doctor_id.toString(),
+        patientName: patientsMap[a.patient_id] || 'مريض', doctorName: doctorsMap[a.doctor_id] || 'طبيب',
+        doctorLocation: doctorsLocationMap[a.doctor_id], date: a.appointment_date, time: a.appointment_time,
+        status: (a.status ? a.status.toUpperCase() : 'PENDING') as AppointmentStatus, notes: a.notes || '' 
       })));
     } catch (e) { console.error(e); }
   }, [user]);
@@ -95,10 +84,7 @@ const App: React.FC = () => {
     if (user) {
       fetchDoctors(); fetchAppointments(); fetchMessages(); fetchReviews();
       const channels = [
-        supabase.channel('public:appointments').on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
-          // تأخير بسيط لضمان تحديث البيانات في قاعدة البيانات
-          setTimeout(fetchAppointments, 300);
-        }).subscribe(),
+        supabase.channel('public:appointments').on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => setTimeout(fetchAppointments, 500)).subscribe(),
         supabase.channel('public:messages').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
           const m = payload.new;
           if (m.sender_id === user.id || m.receiver_id === user.id) {
@@ -165,20 +151,10 @@ const App: React.FC = () => {
     } catch (err: any) { alert(`فشل الحجز: ${err.message}`); return false; }
   };
 
-  // تعديل دالة تحديث الحالة لضمان توافقها مع واجهة المريض
   const updateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
-    const formattedStatus = status.toUpperCase(); // تحويل لـ CONFIRMED أو REJECTED
-    
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status: formattedStatus })
-      .eq('id', id);
-      
-    if (!error) {
-      await fetchAppointments();
-    } else {
-      console.error("خطأ في تحديث الحالة:", error.message);
-    }
+    const formattedStatus = status.toUpperCase(); 
+    const { error } = await supabase.from('appointments').update({ status: formattedStatus }).eq('id', id);
+    if (!error) await fetchAppointments();
   };
 
   const submitReview = async (doctorId: string, rating: number, comment: string) => {
@@ -216,5 +192,23 @@ const App: React.FC = () => {
 
   if (view === 'AUTH') return <Auth onLogin={handleLogin} onRegisterClick={() => setView('REGISTER_PATIENT')} onDoctorRegisterClick={() => setView('REGISTER_DOCTOR')} />;
   if (view === 'REGISTER_PATIENT') return <RegisterPatient onBack={() => setView('AUTH')} onSuccess={(data) => { setUser({ id: data.id.toString(), name: data.full_name, role: 'PATIENT' as UserRole, avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.full_name)}&background=random` }); setView('APP'); }} />;
-  if (view === 'REGISTER_DOCTOR') return <RegisterDoctor onBack={() => setView
-        
+  if (view === 'REGISTER_DOCTOR') return <RegisterDoctor onBack={() => setView('AUTH')} onSuccess={(data) => { setUser({ id: data.id.toString(), name: data.full_name, role: 'DOCTOR' as UserRole, specialty: data.specialty, avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.full_name)}&background=312e81&color=fff` }); setView('APP'); }} />;
+  if (!user) return null;
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <Navbar user={user} onLogout={() => { setUser(null); setView('AUTH'); }} />
+      <main className="flex-1 container mx-auto p-4 md:p-6 max-w-6xl">
+        {user.role === 'PATIENT' ? (
+          <PatientDashboard appointments={appointments} doctors={doctorsWithRatings} onBook={addAppointment} onReview={submitReview} user={user} />
+        ) : (
+          <DoctorDashboard appointments={appointments} user={user} onUpdateStatus={updateAppointmentStatus} onUpdateSettings={updateDoctorSettings} />
+        )}
+      </main>
+      <ChatCenter user={user} messages={messages} contacts={chatContacts} onSendMessage={sendMessage} />
+    </div>
+  );
+};
+
+export default App;
+                                                                                                         

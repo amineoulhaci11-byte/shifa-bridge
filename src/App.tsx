@@ -46,8 +46,7 @@ const App: React.FC = () => {
       let query = supabase.from('appointments').select('*');
       query = user.role === 'PATIENT' ? query.eq('patient_id', user.id) : query.eq('doctor_id', user.id);
       const { data: apptsData } = await query.order('appointment_date', { ascending: true });
-
-      if (!apptsData || apptsData.length === 0) { setAppointments([]); return; }
+      if (!apptsData) { setAppointments([]); return; }
 
       const patientIds = Array.from(new Set(apptsData.map((a: any) => a.patient_id)));
       const doctorIds = Array.from(new Set(apptsData.map((a: any) => a.doctor_id)));
@@ -144,36 +143,15 @@ const App: React.FC = () => {
   const addAppointment = async (apptData: Omit<Appointment, 'id' | 'status'> | Omit<Appointment, 'id' | 'status'>[]): Promise<boolean> => {
     try {
       const appts = Array.isArray(apptData) ? apptData : [apptData];
-      
-      // منطق التحقق من تكرار الموعد
       for (const appt of appts) {
-        const { data: existingAppt } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('doctor_id', appt.doctorId)
-          .eq('appointment_date', appt.date)
-          .eq('appointment_time', appt.time)
-          .maybeSingle();
-
-        if (existingAppt) {
-          alert(`عذراً، الموعد الساعة ${appt.time} محجوز بالفعل!`);
-          return false;
-        }
+        const { data: existingAppt } = await supabase.from('appointments').select('id').eq('doctor_id', appt.doctorId).eq('appointment_date', appt.date).eq('appointment_time', appt.time).maybeSingle();
+        if (existingAppt) { alert(`الموعد الساعة ${appt.time} محجوز مسبقاً!`); return false; }
       }
-
-      const payload = appts.map(appt => ({ 
-        patient_id: appt.patientId, 
-        doctor_id: appt.doctorId, 
-        appointment_date: appt.date, 
-        appointment_time: appt.time, 
-        status: 'PENDING', 
-        notes: appt.notes || '' 
-      }));
-
+      const payload = appts.map(appt => ({ patient_id: appt.patientId, doctor_id: appt.doctorId, appointment_date: appt.date, appointment_time: appt.time, status: 'PENDING', notes: appt.notes || '' }));
       const { error } = await supabase.from('appointments').insert(payload);
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       await fetchAppointments(); return true;
-    } catch (err: any) { alert(`عذراً، فشل حجز الموعد!\nالسبب: ${err.message}`); return false; }
+    } catch (err: any) { alert(`فشل الحجز: ${err.message}`); return false; }
   };
 
   const updateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
@@ -207,9 +185,7 @@ const App: React.FC = () => {
           setTimeout(async () => {
             const replyText = `[رد تلقائي] ${doctor.autoReplyMessage || 'أنا مشغول حالياً.'}`;
             const { data: replyData } = await supabase.from('messages').insert([{ sender_id: doctor.id, receiver_id: user.id, content: replyText, is_auto_reply: true }]).select().single();
-            if (replyData) {
-              setMessages(prev => [...prev, { id: replyData.id.toString(), senderId: replyData.sender_id, receiverId: replyData.receiver_id, content: replyData.content, createdAt: replyData.created_at, isAutoReply: true }]);
-            }
+            if (replyData) setMessages(prev => [...prev, { id: replyData.id.toString(), senderId: replyData.sender_id, receiverId: replyData.receiver_id, content: replyData.content, createdAt: replyData.created_at, isAutoReply: true }]);
           }, 1500);
         }
       }
@@ -219,16 +195,13 @@ const App: React.FC = () => {
   if (view === 'AUTH') return <Auth onLogin={handleLogin} onRegisterClick={() => setView('REGISTER_PATIENT')} onDoctorRegisterClick={() => setView('REGISTER_DOCTOR')} />;
   if (view === 'REGISTER_PATIENT') return <RegisterPatient onBack={() => setView('AUTH')} onSuccess={(data) => { setUser({ id: data.id.toString(), name: data.full_name, role: 'PATIENT', avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.full_name)}&background=random` }); setView('APP'); }} />;
   if (view === 'REGISTER_DOCTOR') return <RegisterDoctor onBack={() => setView('AUTH')} onSuccess={(data) => { setUser({ id: data.id.toString(), name: data.full_name, role: 'DOCTOR', specialty: data.specialty, avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.full_name)}&background=312e81&color=fff` }); setView('APP'); }} />;
-  if (!user) { setView('AUTH'); return null; }
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar user={user} onLogout={() => { setUser(null); setView('AUTH'); }} />
       <main className="flex-1 container mx-auto p-4 md:p-6 max-w-6xl">
-        {user.role === 'PATIENT' ? 
-          <PatientDashboard appointments={appointments} doctors={doctorsWithRatings} onBook={addAppointment} onReview={submitReview} user={user} /> : 
-          <DoctorDashboard appointments={appointments} user={user} onUpdateStatus={updateAppointmentStatus} onUpdateSettings={updateDoctorSettings} />
-        }
+        {user.role === 'PATIENT' ? <PatientDashboard appointments={appointments} doctors={doctorsWithRatings} onBook={addAppointment} onReview={submitReview} user={user} /> : <DoctorDashboard appointments={appointments} user={user} onUpdateStatus={updateAppointmentStatus} onUpdateSettings={updateDoctorSettings} />}
       </main>
       <ChatCenter user={user} messages={messages} contacts={chatContacts} onSendMessage={sendMessage} />
     </div>
@@ -236,4 +209,4 @@ const App: React.FC = () => {
 };
 
 export default App;
-                                              
+                                                                                                                   

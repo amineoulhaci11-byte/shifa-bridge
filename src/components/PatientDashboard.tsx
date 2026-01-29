@@ -9,132 +9,92 @@ interface PatientDashboardProps {
   user: User;
 }
 
-const generateDays = () => {
-  const days = [];
-  const start = new Date();
-  for (let i = 0; i < 14; i++) {
-    const date = new Date(start);
-    date.setDate(start.getDate() + i);
-    days.push(date);
-  }
-  return days;
-};
-
 const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, doctors, onBook, onReview, user }) => {
   const [showModal, setShowModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<User | null>(null);
   const [formData, setFormData] = useState({ date: '', queueNumber: '', notes: '' });
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceWeeks, setRecurrenceWeeks] = useState(4);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewDoctorId, setReviewDoctorId] = useState<string | null>(null);
-  const [ratingValue, setRatingValue] = useState(0);
-  const [reviewComment, setReviewComment] = useState('');
-  const [showReviewSuccess, setShowReviewSuccess] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSpecialty, setSelectedSpecialty] = useState('');
-  const [selectedState, setSelectedState] = useState('');
-  const [sortByRating, setSortByRating] = useState(false);
 
-  const days = useMemo(() => generateDays(), []);
+  // مصفوفة أرقام الدور من 1 إلى 20
+  const availableSlots = Array.from({ length: 20 }, (_, i) => i + 1);
+
   const filteredDoctors = useMemo(() => {
-    let result = doctors.filter(doc => {
-      const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesSpecialty = selectedSpecialty ? doc.specialty === selectedSpecialty : true;
-      const matchesState = selectedState ? doc.state === selectedState : true;
-      return matchesSearch && matchesSpecialty && matchesState;
-    });
-    if (sortByRating) {
-        result = result.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    }
-    return result;
-  }, [doctors, searchQuery, selectedSpecialty, selectedState, sortByRating]);
+    return doctors.filter(doc => doc.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [doctors, searchQuery]);
 
-  const uniqueSpecialties = useMemo(() => Array.from(new Set(doctors.map(d => d.specialty).filter(Boolean))) as string[], [doctors]);
-  const uniqueStates = useMemo(() => Array.from(new Set(doctors.map(d => d.state).filter(Boolean))) as string[], [doctors]);
-  const hasActiveFilters = searchQuery || selectedSpecialty || selectedState || sortByRating;
-
-  const clearFilters = () => { setSearchQuery(''); setSelectedSpecialty(''); setSelectedState(''); setSortByRating(false); };
-  const isQueueTaken = (date: string, number: number, doctorId: string) => {
-    return appointments.some(a => a.date === date && a.time === number.toString() && a.doctorId === doctorId && a.status !== AppointmentStatus.REJECTED);
+  // دالة للتحقق إذا كان الرقم محجوزاً
+  const isSlotBooked = (slot: number) => {
+    if (!selectedDoctor || !formData.date) return false;
+    return appointments.some(
+      (a) => a.doctorId === selectedDoctor.id && 
+             a.date === formData.date && 
+             a.time === slot.toString() &&
+             a.status !== AppointmentStatus.REJECTED
+    );
   };
-  const formatDateLabel = (date: Date) => date.toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'short' });
-  const formatISO = (date: Date) => date.toISOString().split('T')[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDoctor || !formData.date || !formData.queueNumber) return;
+    if (!selectedDoctor || !formData.date || !formData.queueNumber) {
+      alert("يرجى اختيار التاريخ ورقم الدور");
+      return;
+    }
     setIsSubmitting(true);
-    const baseAppointment = { patientId: user.id, patientName: user.name, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, time: formData.queueNumber, notes: formData.notes };
-    let appointmentsToBook = [];
-    if (isRecurring) {
-        const baseDate = new Date(formData.date);
-        for (let i = 0; i < recurrenceWeeks; i++) {
-            const nextDate = new Date(baseDate);
-            nextDate.setDate(baseDate.getDate() + (i * 7));
-            appointmentsToBook.push({ ...baseAppointment, date: nextDate.toISOString().split('T')[0] });
-        }
-    } else { appointmentsToBook.push({ ...baseAppointment, date: formData.date }); }
-    const success = await onBook(appointmentsToBook);
+    const appointment = {
+      patientId: user.id,
+      patientName: user.name,
+      doctorId: selectedDoctor.id,
+      doctorName: selectedDoctor.name,
+      date: formData.date,
+      time: formData.queueNumber,
+      notes: formData.notes
+    };
+    
+    const success = await onBook(appointment);
     setIsSubmitting(false);
     if (success) {
       setShowSuccess(true);
-      setTimeout(() => { setShowSuccess(false); setShowModal(false); setFormData({ date: '', queueNumber: '', notes: '' }); setIsRecurring(false); setSelectedDoctor(null); }, 2000);
+      setTimeout(() => {
+        setShowSuccess(false);
+        setShowModal(false);
+        setFormData({ date: '', queueNumber: '', notes: '' });
+        setSelectedDoctor(null);
+      }, 2000);
     }
   };
 
-  const handleReviewSubmit = async () => {
-      if (!reviewDoctorId || ratingValue === 0) return;
-      await onReview(reviewDoctorId, ratingValue, reviewComment);
-      setShowReviewSuccess(true);
-      setTimeout(() => { setShowReviewSuccess(false); setShowReviewModal(false); setReviewDoctorId(null); setRatingValue(0); setReviewComment(''); }, 2000);
-  };
-
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-8 animate-in fade-in duration-500 text-right" dir="rtl">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">مرحباً بك يا {user.name.split(' ')[0]}!</h2>
-          <p className="text-slate-500 italic">كيف يمكننا مساعدتك اليوم؟</p>
+          <h2 className="text-2xl font-bold text-slate-800">مرحباً، {user.name}</h2>
+          <p className="text-slate-500">اختر طبيباً وابدأ بحجز موعدك بسهولة.</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 transition-all transform hover:scale-105">+ حجز موعد جديد</button>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="col-span-1 md:col-span-2 lg:col-span-2">
-          <h3 className="text-lg font-bold text-slate-700 mb-4 text-right">مواعيدك القادمة</h3>
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* قائمة المواعيد */}
+        <div className="lg:col-span-2 space-y-4">
+          <h3 className="text-lg font-bold text-slate-700">مواعيدك الحالية</h3>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             {appointments.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">لا توجد مواعيد حالية. ابدأ بحجز أول موعد لك!</div>
+              <div className="p-12 text-center text-slate-400">لا توجد مواعيد محجوزة حالياً.</div>
             ) : (
               <div className="divide-y divide-slate-100">
                 {appointments.map(appt => (
-                  <div key={appt.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4">
-                    <div className="flex items-start gap-4 text-right">
-                      <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shrink-0 mt-1 sm:mt-0"><span className="font-bold text-lg">{appt.time}</span></div>
+                  <div key={appt.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">{appt.time}</div>
                       <div>
-                        <div className="flex items-center gap-2">
-                            <p className="font-bold text-slate-800 text-lg">{appt.doctorName}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-3 mt-2 text-sm text-slate-500">
-                          <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg">{appt.date}</span>
-                        </div>
+                        <p className="font-bold text-slate-800">{appt.doctorName}</p>
+                        <p className="text-sm text-slate-500">{appt.date}</p>
                       </div>
                     </div>
-                    <div>
-                      {appt.status === AppointmentStatus.COMPLETED ? (
-                          <div className="flex items-center gap-2">
-                            <span className="px-4 py-2 rounded-xl text-sm font-bold bg-slate-100 text-slate-600">تمت الزيارة</span>
-                            <button onClick={() => { setReviewDoctorId(appt.doctorId); setShowReviewModal(true); }} className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-xl text-xs font-bold hover:bg-yellow-200 transition-colors">⭐ قيّم تجربتك</button>
-                          </div>
-                      ) : (
-                        <span className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 ${appt.status === AppointmentStatus.PENDING ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                            {appt.status === AppointmentStatus.PENDING ? 'قيد الانتظار' : 'تم التأكيد'}
-                        </span>
-                      )}
-                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {appt.status === 'CONFIRMED' ? 'مؤكد' : 'قيد الانتظار'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -142,64 +102,107 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
           </div>
         </div>
 
+        {/* قائمة الأطباء */}
         <div className="space-y-4">
-            <h3 className="text-lg font-bold text-slate-700 text-right">الأطباء المتاحون</h3>
-            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-                <input type="text" placeholder="ابحث عن طبيب..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm" />
-                <div className="grid grid-cols-2 gap-2">
-                    <select value={selectedSpecialty} onChange={(e) => setSelectedSpecialty(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">التخصص</option>{uniqueSpecialties.map(s => <option key={s} value={s}>{s}</option>)}</select>
-                    <select value={selectedState} onChange={(e) => setSelectedState(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">الولاية</option>{uniqueStates.map(s => <option key={s} value={s}>{s}</option>)}</select>
+          <h3 className="text-lg font-bold text-slate-700">الأطباء المتاحون</h3>
+          <input 
+            type="text" 
+            placeholder="بحث عن طبيب..." 
+            className="w-full p-3 rounded-xl border border-slate-200 bg-white"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="space-y-3">
+            {filteredDoctors.map(doc => (
+              <div key={doc.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-800">{doc.name}</p>
+                  <p className="text-xs text-blue-600">{doc.specialty}</p>
                 </div>
-            </div>
-            <div className="space-y-3">
-                {filteredDoctors.map(doc => (
-                    <div key={doc.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                        <div>
-                            <p className="font-bold text-slate-800">{doc.name}</p>
-                            <p className="text-xs text-blue-600">{doc.specialty}</p>
-                        </div>
-                        <button onClick={() => { setSelectedDoctor(doc); setShowModal(true); }} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100">حجز</button>
-                    </div>
-                ))}
-            </div>
-        </div>
-      </section>
-
-      {/* نافذة الحجز */}
-      {showModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowModal(false)}></div>
-          <div className="bg-white rounded-[2rem] w-full max-w-2xl p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh]">
-            {showSuccess ? (
-              <div className="py-12 text-center"><h3 className="text-2xl font-bold text-slate-800">تم الحجز بنجاح!</h3></div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-6 text-right">
-                <h3 className="text-xl font-bold text-slate-800 mb-4">حجز موعد مع {selectedDoctor?.name}</h3>
-                <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} />
-                <input type="number" placeholder="رقم الدور" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3" value={formData.queueNumber} onChange={(e) => setFormData({...formData, queueNumber: e.target.value})} />
-                <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold">{isSubmitting ? 'جاري الحجز...' : 'تأكيد الحجز'}</button>
-              </form>
-            )}
+                <button 
+                  onClick={() => { setSelectedDoctor(doc); setShowModal(true); }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700"
+                >
+                  حجز موعد
+                </button>
+              </div>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* نافذة التقييم */}
-      {showReviewModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowReviewModal(false)}></div>
-          <div className="bg-white rounded-[2rem] w-full max-w-md p-6 relative z-10 shadow-2xl">
-            {showReviewSuccess ? (
-              <div className="py-8 text-center"><h3 className="text-xl font-bold text-slate-800">شكراً لتقييمك!</h3></div>
+      {/* نافذة الحجز التفاعلية */}
+      {showModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowModal(false)}></div>
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-8 relative z-10 shadow-2xl">
+            {showSuccess ? (
+              <div className="py-12 text-center space-y-4">
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-4xl">✓</div>
+                <h3 className="text-2xl font-bold text-slate-800">تم الحجز بنجاح!</h3>
+              </div>
             ) : (
-              <div className="space-y-6 text-right">
-                <h3 className="text-xl font-bold text-slate-800">تقييمك يهمنا</h3>
-                <div className="flex justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button key={star} onClick={() => setRatingValue(star)} className={`text-3xl ${star <= ratingValue ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>
-                  ))}
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h3 className="text-xl font-bold text-slate-800">حجز موعد جديد</h3>
+                  <p className="text-slate-500">مع الطبيب: {selectedDoctor?.name}</p>
                 </div>
-                <button onClick={handleReviewSubmit} disabled={ratingValue === 0} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">إرسال التقييم</button>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-slate-700">1. اختر تاريخ اليوم:</label>
+                  <input 
+                    type="date" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={formData.date}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value, queueNumber: '' })}
+                  />
+                </div>
+
+                {formData.date && (
+                  <div className="space-y-3 animate-in slide-in-from-top-4 duration-300">
+                    <label className="block text-sm font-bold text-slate-700">2. اختر رقم الدور المتاح:</label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {availableSlots.map((slot) => {
+                        const booked = isSlotBooked(slot);
+                        const isSelected = formData.queueNumber === slot.toString();
+                        return (
+                          <button
+                            key={slot}
+                            disabled={booked}
+                            onClick={() => setFormData({ ...formData, queueNumber: slot.toString() })}
+                            className={`h-12 rounded-xl font-bold transition-all border ${
+                              booked 
+                                ? 'bg-red-50 text-red-300 border-red-100 cursor-not-allowed' 
+                                : isSelected 
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' 
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-blue-500 hover:bg-blue-50'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-4 text-xs mt-2 justify-center">
+                      <div className="flex items-center gap-1"><span className="w-3 h-3 bg-red-100 border border-red-200 rounded"></span> محجوز</div>
+                      <div className="flex items-center gap-1"><span className="w-3 h-3 bg-white border border-slate-200 rounded"></span> متاح</div>
+                      <div className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-600 rounded"></span> اختيارك</div>
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !formData.queueNumber}
+                  className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg transition-all ${
+                    !formData.queueNumber 
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 shadow-blue-200'
+                  }`}
+                >
+                  {isSubmitting ? 'جاري الحجز...' : 'تأكيد الحجز الآن'}
+                </button>
               </div>
             )}
           </div>
@@ -210,4 +213,4 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
 };
 
 export default PatientDashboard;
-        
+                  

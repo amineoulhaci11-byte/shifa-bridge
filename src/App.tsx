@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
 
+  // جلب التقييمات
   const fetchReviews = useCallback(async () => {
     const { data } = await supabase.from('reviews').select('*');
     if (data) {
@@ -28,6 +29,7 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // جلب الأطباء
   const fetchDoctors = useCallback(async () => {
     const { data } = await supabase.from('doctors').select('*');
     if (data) {
@@ -41,16 +43,21 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // جلب المواعيد (مع توحيد الأحرف الكبيرة)
   const fetchAppointments = useCallback(async () => {
     if (!user) return;
     try {
       let query = supabase.from('appointments').select('*');
       query = user.role === 'PATIENT' ? query.eq('patient_id', user.id) : query.eq('doctor_id', user.id);
-      const { data: apptsData } = await query.order('appointment_date', { ascending: true });
+      
+      const { data: apptsData, error } = await query.order('appointment_date', { ascending: true });
+      
+      if (error) { console.error("Error fetching appointments:", error); return; }
       if (!apptsData) { setAppointments([]); return; }
       
       const patientIds = Array.from(new Set(apptsData.map((a: any) => a.patient_id)));
       const doctorIds = Array.from(new Set(apptsData.map((a: any) => a.doctor_id)));
+      
       const [patientsRes, doctorsRes] = await Promise.all([
         patientIds.length ? supabase.from('patients').select('id, full_name').in('id', patientIds) : { data: [] },
         doctorIds.length ? supabase.from('doctors').select('id, full_name, clinic_location').in('id', doctorIds) : { data: [] }
@@ -58,6 +65,7 @@ const App: React.FC = () => {
       
       const patientsMap: Record<string, string> = {};
       patientsRes.data?.forEach((p: any) => { patientsMap[p.id] = p.full_name; });
+      
       const doctorsMap: Record<string, string> = {};
       const doctorsLocationMap: Record<string, string> = {};
       doctorsRes.data?.forEach((d: any) => { 
@@ -69,17 +77,30 @@ const App: React.FC = () => {
         id: a.id.toString(), patientId: a.patient_id.toString(), doctorId: a.doctor_id.toString(),
         patientName: patientsMap[a.patient_id] || 'مريض', doctorName: doctorsMap[a.doctor_id] || 'طبيب',
         doctorLocation: doctorsLocationMap[a.doctor_id], date: a.appointment_date, time: a.appointment_time,
-        // تم الإصلاح: تحويل الحالة لأحرف صغيرة دائماً
-        status: (a.status ? a.status.toLowerCase() : 'pending') as AppointmentStatus, 
+        // *** التعديل الجوهري: إجبار الحالة أن تكون كبيرة ***
+        status: (a.status ? a.status.toUpperCase() : 'PENDING') as AppointmentStatus, 
         notes: a.notes || '' 
       })));
     } catch (e) { console.error(e); }
   }, [user]);
 
-  const updateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
-    // تم الإصلاح: إرسال الحالة صغيرة لقاعدة البيانات
-    const { error } = await supabase.from('appointments').update({ status: status.toLowerCase() }).eq('id', id);
-    if (!error) await fetchAppointments();
+  // تحديث الحالة (مع كشف الأخطاء)
+  const updateAppointmentStatus = async (id: string, status: string) => {
+    // نرسل الحالة كبيرة (UPPERCASE)
+    const normalizedStatus = status.toUpperCase();
+    console.log(`Updating appt ${id} to ${normalizedStatus}`);
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({ status: normalizedStatus })
+      .eq('id', id);
+
+    if (error) {
+      console.error("Supabase Update Error:", error);
+      alert(`فشل التحديث! رسالة الخطأ من السيرفر: \n${error.message}`);
+    } else {
+      await fetchAppointments();
+    }
   };
 
   const updateDoctorSettings = async (enabled: boolean, message: string, maxAppts: number) => {
@@ -96,7 +117,7 @@ const App: React.FC = () => {
       const appts = Array.isArray(apptData) ? apptData : [apptData];
       const payload = appts.map(appt => ({ 
         patient_id: appt.patientId, doctor_id: appt.doctorId, appointment_date: appt.date, 
-        appointment_time: appt.time, status: 'pending', notes: appt.notes || '' 
+        appointment_time: appt.time, status: 'PENDING', notes: appt.notes || '' 
       }));
       const { error } = await supabase.from('appointments').insert(payload);
       if (error) throw error;
@@ -197,4 +218,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-      

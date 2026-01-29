@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { UserRole, User, Appointment, AppointmentStatus, Message, Review } from './types';
 
-// Components
 import Auth from './components/Auth';
 import Navbar from './components/Navbar';
 import PatientDashboard from './components/PatientDashboard';
@@ -19,7 +18,6 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
 
-  // جلب التقييمات
   const fetchReviews = useCallback(async () => {
     const { data } = await supabase.from('reviews').select('*');
     if (data) {
@@ -29,7 +27,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // جلب الأطباء
   const fetchDoctors = useCallback(async () => {
     const { data } = await supabase.from('doctors').select('*');
     if (data) {
@@ -43,16 +40,14 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // جلب المواعيد (مع توحيد الأحرف الكبيرة)
+  // === دالة جلب المواعيد (معدلة للتعامل بذكاء مع الحالة) ===
   const fetchAppointments = useCallback(async () => {
     if (!user) return;
     try {
       let query = supabase.from('appointments').select('*');
       query = user.role === 'PATIENT' ? query.eq('patient_id', user.id) : query.eq('doctor_id', user.id);
       
-      const { data: apptsData, error } = await query.order('appointment_date', { ascending: true });
-      
-      if (error) { console.error("Error fetching appointments:", error); return; }
+      const { data: apptsData } = await query.order('appointment_date', { ascending: true });
       if (!apptsData) { setAppointments([]); return; }
       
       const patientIds = Array.from(new Set(apptsData.map((a: any) => a.patient_id)));
@@ -65,7 +60,6 @@ const App: React.FC = () => {
       
       const patientsMap: Record<string, string> = {};
       patientsRes.data?.forEach((p: any) => { patientsMap[p.id] = p.full_name; });
-      
       const doctorsMap: Record<string, string> = {};
       const doctorsLocationMap: Record<string, string> = {};
       doctorsRes.data?.forEach((d: any) => { 
@@ -74,32 +68,29 @@ const App: React.FC = () => {
       });
 
       setAppointments(apptsData.map((a: any) => ({
-        id: a.id.toString(), patientId: a.patient_id.toString(), doctorId: a.doctor_id.toString(),
-        patientName: patientsMap[a.patient_id] || 'مريض', doctorName: doctorsMap[a.doctor_id] || 'طبيب',
-        doctorLocation: doctorsLocationMap[a.doctor_id], date: a.appointment_date, time: a.appointment_time,
-        // *** التعديل الجوهري: إجبار الحالة أن تكون كبيرة ***
-        status: (a.status ? a.status.toUpperCase() : 'PENDING') as AppointmentStatus, 
+        id: a.id.toString(), 
+        patientId: a.patient_id.toString(), 
+        doctorId: a.doctor_id.toString(),
+        patientName: patientsMap[a.patient_id] || 'مريض', 
+        doctorName: doctorsMap[a.doctor_id] || 'طبيب',
+        doctorLocation: doctorsLocationMap[a.doctor_id], 
+        date: a.appointment_date, 
+        time: a.appointment_time,
+        // *** نقطة الإصلاح ***: نقرأ الحالة كما هي، ثم DoctorDashboard سيتعامل معها بـ .toLowerCase()
+        status: (a.status || 'pending') as AppointmentStatus, 
         notes: a.notes || '' 
       })));
     } catch (e) { console.error(e); }
   }, [user]);
 
-  // تحديث الحالة (مع كشف الأخطاء)
+  // === دالة تحديث الحالة ===
   const updateAppointmentStatus = async (id: string, status: string) => {
-    // نرسل الحالة كبيرة (UPPERCASE)
-    const normalizedStatus = status.toUpperCase();
-    console.log(`Updating appt ${id} to ${normalizedStatus}`);
-
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status: normalizedStatus })
-      .eq('id', id);
-
-    if (error) {
-      console.error("Supabase Update Error:", error);
-      alert(`فشل التحديث! رسالة الخطأ من السيرفر: \n${error.message}`);
-    } else {
+    // نرسل الحالة بأحرف صغيرة (standardization)
+    const { error } = await supabase.from('appointments').update({ status: status.toLowerCase() }).eq('id', id);
+    if (!error) {
       await fetchAppointments();
+    } else {
+      console.error("Update Error:", error);
     }
   };
 
@@ -112,17 +103,33 @@ const App: React.FC = () => {
     }
   };
 
+  // === دالة إضافة موعد (معدلة لتجنب مشاكل الإرسال) ===
   const addAppointment = async (apptData: any): Promise<boolean> => {
     try {
       const appts = Array.isArray(apptData) ? apptData : [apptData];
       const payload = appts.map(appt => ({ 
-        patient_id: appt.patientId, doctor_id: appt.doctorId, appointment_date: appt.date, 
-        appointment_time: appt.time, status: 'PENDING', notes: appt.notes || '' 
+        patient_id: appt.patientId, 
+        doctor_id: appt.doctorId, 
+        appointment_date: appt.date, 
+        appointment_time: appt.time, 
+        status: 'pending', // نرسل pending بأحرف صغيرة دائماً
+        notes: appt.notes || '' 
       }));
+      
       const { error } = await supabase.from('appointments').insert(payload);
-      if (error) throw error;
-      await fetchAppointments(); return true;
-    } catch (err: any) { alert(err.message); return false; }
+      
+      if (error) {
+        console.error("Insert Error:", error);
+        alert("خطأ في الحجز: " + error.message);
+        return false;
+      }
+      
+      await fetchAppointments(); 
+      return true;
+    } catch (err: any) { 
+      alert(err.message); 
+      return false; 
+    }
   };
 
   const handleLogin = async (role: UserRole, userData?: User) => {
@@ -154,7 +161,7 @@ const App: React.FC = () => {
         if (doctor && doctor.autoReplyEnabled) {
           setTimeout(async () => {
             const { data: reply } = await supabase.from('messages').insert([{ sender_id: doctor.id, receiver_id: user.id, content: `[رد تلقائي] ${doctor.autoReplyMessage}`, is_auto_reply: true }]).select().single();
-            if (reply) setMessages(prev => [...prev, { id: reply.id.toString(), senderId: reply.sender_id, receiverId: reply.receiver_id, content: reply.content, createdAt: reply.created_at, isAutoReply: true }]);
+            if (reply) setMessages(prev => [...prev, { id: reply.id.toString(), senderId: reply.sender_id, receiverId: reply.sender_id, content: reply.content, createdAt: reply.created_at, isAutoReply: true }]);
           }, 1500);
         }
       }
@@ -164,6 +171,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user) {
       fetchDoctors(); fetchAppointments(); fetchMessages(); fetchReviews();
+      // اشتراكات الريال تايم (لضمان وصول الموعد فوراً)
+      const channels = [
+        supabase.channel('public:appointments').on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => setTimeout(fetchAppointments, 500)).subscribe(),
+        // ... (بقية الاشتراكات)
+      ];
+      return () => { channels.forEach(c => supabase.removeChannel(c)); };
     }
   }, [user, fetchDoctors, fetchAppointments, fetchMessages, fetchReviews]);
 
@@ -218,3 +231,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+                                                             

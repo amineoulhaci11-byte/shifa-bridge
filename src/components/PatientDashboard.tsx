@@ -1,40 +1,45 @@
-import React, { useState, useMemo } from 'react';
-import { Appointment, AppointmentStatus, User } from '../types';
+      {/* نافذة التقييم - كانت مفقودة وهي سبب الخطأ */}
+      {showReviewModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowReviewModal(false)}></div>
+          <div className="bg-white rounded-[2rem] w-full max-w-md p-6 relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
+            {showReviewSuccess ? (
+              <div className="py-8 text-center space-y-4">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl">✓</div>
+                <h3 className="text-xl font-bold text-slate-800">شكراً لتقييمك!</h3>
+              </div>
+            ) : (
+              <div className="space-y-6 text-right">
+                <h3 className="text-xl font-bold text-slate-800">تقييم الطبيب</h3>
+                <div className="flex justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button key={star} onClick={() => setRatingValue(star)} className={`text-3xl ${star <= ratingValue ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>
+                  ))}
+                </div>
+                <textarea 
+                  placeholder="اكتب تعليقك هنا..." 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 h-24 resize-none text-sm"
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                ></textarea>
+                <button 
+                  onClick={handleReviewSubmit}
+                  disabled={ratingValue === 0}
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  إرسال التقييم
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div> // إغلاق الوسم الرئيسي للمكون
+  ); // إغلاق قوس الـ return
+}; // إغلاق المكون
 
-interface PatientDashboardProps {
-  appointments: Appointment[];
-  doctors: User[];
-  onBook: (appt: Omit<Appointment, 'id' | 'status'> | Omit<Appointment, 'id' | 'status'>[]) => Promise<boolean>;
-  onReview: (doctorId: string, rating: number, comment: string) => Promise<void>;
-  user: User;
-}
-
-const generateDays = () => {
-  const days = [];
-  const start = new Date();
-  for (let i = 0; i < 14; i++) {
-    const date = new Date(start);
-    date.setDate(start.getDate() + i);
-    days.push(date);
-  }
-  return days;
-};
-
-const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, doctors, onBook, onReview, user }) => {
-  const [showModal, setShowModal] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ date: '', queueNumber: '', notes: '' });
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceWeeks, setRecurrenceWeeks] = useState(4);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewDoctorId, setReviewDoctorId] = useState<string | null>(null);
-  const [ratingValue, setRatingValue] = useState(0);
-  const [reviewComment, setReviewComment] = useState('');
-  const [showReviewSuccess, setShowReviewSuccess] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSpecialty, setSelectedSpecialty] = useState('');
+export default PatientDashboard; // تصدير المكون
+      const [selectedSpecialty, setSelectedSpecialty] = useState('');
   const [selectedState, setSelectedState] = useState('');
   const [sortByRating, setSortByRating] = useState(false);
 

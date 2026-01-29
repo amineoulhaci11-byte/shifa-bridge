@@ -29,7 +29,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
       (a) => a.doctorId === selectedDoctor.id && 
              a.date === formData.date && 
              a.time === slot.toString() &&
-             a.status !== 'rejected'
+             a.status !== 'REJECTED'
     );
   };
 
@@ -73,9 +73,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
             ) : (
               <div className="divide-y divide-slate-100">
                 {appointments.map(appt => {
-                  // تم الإصلاح: فحص الحالة بطريقة مرنة (صغيرة أو كبيرة)
-                  const currentStatus = appt.status?.toLowerCase();
-                  const isAccepted = currentStatus === 'accepted' || currentStatus === 'confirmed';
+                  // تحويل القادم من القاعدة لأحرف كبيرة للتأكد
+                  const currentStatus = (appt.status || '').toUpperCase();
+                  const isAccepted = currentStatus === 'ACCEPTED' || currentStatus === 'CONFIRMED';
 
                   return (
                     <div key={appt.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
@@ -175,4 +175,4 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ appointments, docto
 };
 
 export default PatientDashboard;
-                    
+                                                                             

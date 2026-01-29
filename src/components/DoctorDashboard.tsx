@@ -4,7 +4,7 @@ import { Appointment, AppointmentStatus, User } from '../types';
 interface DoctorDashboardProps {
   appointments: Appointment[];
   user: User;
-  onUpdateStatus: (id: string, status: AppointmentStatus) => void;
+  onUpdateStatus: (id: string, status: string) => void;
   onUpdateSettings: (enabled: boolean, message: string, maxAppts: number) => Promise<void>;
 }
 
@@ -22,10 +22,10 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ appointments, user, o
   }, [user]);
 
   const stats = useMemo(() => {
-    // تم الإصلاح: الفلترة باستخدام أحرف صغيرة
-    const pending = appointments.filter(a => a.status === 'pending');
+    // نفلتر بناء على الأحرف الكبيرة
+    const pending = appointments.filter(a => a.status === 'PENDING');
     const today = new Date().toISOString().split('T')[0];
-    const todays = appointments.filter(a => (a.status === 'accepted' || a.status === 'confirmed') && a.date === today);
+    const todays = appointments.filter(a => (a.status === 'ACCEPTED' || a.status === 'CONFIRMED') && a.date === today);
     return { pending, todays };
   }, [appointments]);
 
@@ -43,8 +43,9 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ appointments, user, o
                     <p className="text-xs text-slate-500">{appt.date} | {appt.time}</p>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => onUpdateStatus(appt.id, 'rejected' as any)} className="text-red-500 font-bold px-3 py-2 hover:bg-red-50 rounded-xl transition-colors">رفض</button>
-                    <button onClick={() => onUpdateStatus(appt.id, 'accepted' as any)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow-md hover:bg-blue-700 transition-all">قبول الموعد</button>
+                    {/* إرسال الحالات بأحرف كبيرة صريحة */}
+                    <button onClick={() => onUpdateStatus(appt.id, 'REJECTED')} className="text-red-500 font-bold px-3 py-2 hover:bg-red-50 rounded-xl transition-colors">رفض</button>
+                    <button onClick={() => onUpdateStatus(appt.id, 'ACCEPTED')} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow-md hover:bg-blue-700 transition-all">قبول الموعد</button>
                   </div>
                 </div>
               ))

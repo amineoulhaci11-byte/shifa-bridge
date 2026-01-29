@@ -65,7 +65,9 @@ const App: React.FC = () => {
         id: a.id.toString(), patientId: a.patient_id.toString(), doctorId: a.doctor_id.toString(),
         patientName: patientsMap[a.patient_id] || 'مريض', doctorName: doctorsMap[a.doctor_id] || 'طبيب',
         doctorLocation: doctorsLocationMap[a.doctor_id], date: a.appointment_date, time: a.appointment_time,
-        status: (a.status ? a.status.toUpperCase() : 'PENDING') as AppointmentStatus, notes: a.notes || '' 
+        // تم الإصلاح هنا: تحويل الحالة لأحرف صغيرة دائماً لتتوافق مع الواجهة
+        status: (a.status ? a.status.toLowerCase() : 'pending') as AppointmentStatus, 
+        notes: a.notes || '' 
       })));
     } catch (e) { console.error(e); }
   }, [user]);
@@ -144,7 +146,8 @@ const App: React.FC = () => {
         const { data: existingAppt } = await supabase.from('appointments').select('id').eq('doctor_id', appt.doctorId).eq('appointment_date', appt.date).eq('appointment_time', appt.time).maybeSingle();
         if (existingAppt) { alert(`الموعد الساعة ${appt.time} محجوز مسبقاً!`); return false; }
       }
-      const payload = appts.map(appt => ({ patient_id: appt.patientId, doctor_id: appt.doctorId, appointment_date: appt.date, appointment_time: appt.time, status: 'PENDING', notes: appt.notes || '' }));
+      // تم الإصلاح هنا: الحالة 'pending'
+      const payload = appts.map(appt => ({ patient_id: appt.patientId, doctor_id: appt.doctorId, appointment_date: appt.date, appointment_time: appt.time, status: 'pending', notes: appt.notes || '' }));
       const { error } = await supabase.from('appointments').insert(payload);
       if (error) throw error;
       await fetchAppointments(); return true;
@@ -152,8 +155,8 @@ const App: React.FC = () => {
   };
 
   const updateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
-    const formattedStatus = status.toUpperCase(); 
-    const { error } = await supabase.from('appointments').update({ status: formattedStatus }).eq('id', id);
+    // تم الإصلاح هنا: إرسال الحالة كما هي (بالصغير)
+    const { error } = await supabase.from('appointments').update({ status: status.toLowerCase() }).eq('id', id);
     if (!error) await fetchAppointments();
   };
 
@@ -211,4 +214,4 @@ const App: React.FC = () => {
 };
 
 export default App;
-                                                                                                         
+                            
